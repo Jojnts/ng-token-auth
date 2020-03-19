@@ -96,8 +96,8 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
       return configs;
     },
     $get: [
-      '$http', '$q', '$location', 'ipCookie', '$window', '$timeout', '$rootScope', '$interpolate', '$interval', (function(_this) {
-        return function($http, $q, $location, ipCookie, $window, $timeout, $rootScope, $interpolate, $interval) {
+      '$http', '$q', '$location', 'ipCookie', '$window', '$timeout', '$rootScope', '$interpolate', '$interval', 'BugfenderService', (function(_this) {
+        return function($http, $q, $location, ipCookie, $window, $timeout, $rootScope, $interpolate, $interval, BugfenderService) {
           return {
             header: null,
             dfd: null,
@@ -451,6 +451,9 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
                 opts = {};
               }
               configName = opts.config;
+              BugfenderService.log('NgTokenAuth validateUser, opts: ', JSON.stringify(opts));
+              BugfenderService.log('NgTokenAuth validateUser, apiUrl: ', this.getConfig().apiUrl);
+              BugfenderService.log('NgTokenAuth validateUser, storage: ', this.getConfig().storage);
               if (this.dfd == null) {
                 this.initDfd();
                 if (this.userIsAuthenticated()) {
@@ -803,7 +806,7 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
       newTokenExpiry = Number($auth.getConfig().parseExpiry(headers || {}));
       return newTokenExpiry >= oldTokenExpiry;
     };
-    updateHeadersFromResponse = function($auth, resp) {
+    updateHeadersFromResponse = function($auth, resp, BugfenderService) {
       var key, newHeaders, val, _ref;
       newHeaders = {};
       _ref = $auth.getConfig().tokenFormat;
@@ -813,8 +816,24 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
           newHeaders[key] = resp.headers(key);
         }
       }
+
+      // Log headers (filter out spammy unread_messages_count url)
+      if (resp && resp.config && resp.config.url && (resp.config.url.indexOf('unread_messages_count') === -1)) {
+        var logHeaders;
+        if (newHeaders) {
+          logHeaders = Object.assign({}, newHeaders);
+          // Hide access-token (if any) from logging
+          if (logHeaders['access-token']) {
+            logHeaders['access-token'] = logHeaders['access-token'].slice(0, 4) + '...'
+          }
+        }
+        BugfenderService.log('NgTokenAuth updateHeadersFromResponse, auth headers: ', JSON.stringify(logHeaders));
+      }
+
       if (tokenIsCurrent($auth, newHeaders)) {
         return $auth.setAuthHeaders(newHeaders);
+      } else {
+        BugfenderService.log('NgTokenAuth Token is not current');
       }
     };
     $httpProvider.interceptors.push([
@@ -822,9 +841,13 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
         return {
           request: function(req) {
             $injector.invoke([
-              '$http', '$auth', function($http, $auth) {
+              '$http', '$auth', 'BugfenderService', function($http, $auth, BugfenderService) {
                 var key, val, _ref, _results;
+                BugfenderService.log('NgTokenAuth Intercept request url: ', req.url)
                 if (req.url.match($auth.apiUrl())) {
+                  if (req.url.indexOf('unread_messages_count') === -1) {
+                    BugfenderService.log('NgTokenAuth Intercept request match url: ', req.url);
+                  }
                   _ref = $auth.retrieveData('auth_headers');
                   _results = [];
                   for (key in _ref) {
@@ -839,9 +862,12 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
           },
           response: function(resp) {
             $injector.invoke([
-              '$http', '$auth', function($http, $auth) {
+              '$http', '$auth', 'BugfenderService', function($http, $auth, BugfenderService) {
                 if (resp.config.url.match($auth.apiUrl())) {
-                  return updateHeadersFromResponse($auth, resp);
+                  if (resp.config.url.indexOf('unread_messages_count') === -1) {
+                    BugfenderService.log('NgTokenAuth Intercept response match url: ', resp.config.url)
+                  }
+                  return updateHeadersFromResponse($auth, resp, BugfenderService);
                 }
               }
             ]);
@@ -849,9 +875,14 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
           },
           responseError: function(resp) {
             $injector.invoke([
-              '$http', '$auth', function($http, $auth) {
+              '$http', '$auth', 'BugfenderService', function($http, $auth, BugfenderService) {
+                if (resp && resp.config && resp.config.url) {
+                  BugfenderService.log('NgTokenAuth Intercept response error url: ', resp.config.url)
+                } else {
+                  BugfenderService.log('NgTokenAuth Intercept response error')
+                }
                 if (resp && resp.config && resp.config.url && resp.config.url.match($auth.apiUrl())) {
-                  return updateHeadersFromResponse($auth, resp);
+                  return updateHeadersFromResponse($auth, resp, BugfenderService);
                 }
               }
             ]);
