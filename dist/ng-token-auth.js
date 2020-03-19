@@ -843,7 +843,6 @@ angular.module('ng-token-auth', ['ipCookie']).provider('$auth', function() {
             $injector.invoke([
               '$http', '$auth', 'BugfenderService', function($http, $auth, BugfenderService) {
                 var key, val, _ref, _results;
-                BugfenderService.log('NgTokenAuth Intercept request url: ', req.url)
                 if (req.url.match($auth.apiUrl())) {
                   if (req.url.indexOf('unread_messages_count') === -1) {
                     BugfenderService.log('NgTokenAuth Intercept request match url: ', req.url);
